@@ -2,6 +2,16 @@ import { currentUser } from "../lib/currentUser";
 import { supabase } from "../lib/supabase";
 import { validateAttachment } from "../lib/logic";
 import type { Message } from "../types";
+
+async function dispatchPush(messageId: string) {
+  try {
+    await supabase.functions.invoke("send-push", {
+      body: { message_id: messageId },
+    });
+  } catch {
+    /* Push delivery is best-effort and must never fail message sending. */
+  }
+}
 // Deterministic keyset pagination avoids the default 1,000-row API truncation.
 export async function listMessages(cid: string, before?: Message) {
   let q = supabase
@@ -100,9 +110,13 @@ export async function sendMessage(
       .select("*")
       .eq("id", id)
       .maybeSingle();
-    if (existing.data) return existing.data as Message;
+    if (existing.data) {
+      void dispatchPush(existing.data.id);
+      return existing.data as Message;
+    }
     throw error;
   }
+  void dispatchPush(data.id);
   return data as Message;
 }
 export async function deleteMessage(message: Message) {

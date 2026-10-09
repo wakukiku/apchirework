@@ -18,6 +18,7 @@ import { useSettings } from "../state/SettingsContext";
 import { getMyProfile } from "../services/profiles";
 import {
   notificationEnabled,
+  syncPushSubscription,
   toggleNotifications,
 } from "../services/notifications";
 import { supabase } from "../lib/supabase";
@@ -50,6 +51,19 @@ export function AppShell() {
   const anchor = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   useEffect(() => watchInstall(() => setInstallRevision((v) => v + 1)), []);
+  useEffect(() => {
+    let active = true;
+    void syncPushSubscription(user!.id)
+      .then((enabled) => {
+        if (active) setNotify(enabled);
+      })
+      .catch(() => {
+        if (active) setNotify(notificationEnabled(user!.id));
+      });
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
   useEffect(() => {
     let active = true;
     const refresh = () => {

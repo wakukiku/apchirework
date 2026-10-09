@@ -8,6 +8,7 @@ import {
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase, supabaseConfigured } from "../lib/supabase";
+import { detachPushSubscription } from "../services/notifications";
 type Value = {
   configured: boolean;
   loading: boolean;
@@ -66,11 +67,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session?.user ?? null,
       error,
       signOut: async () => {
-        if (session?.user)
+        if (session?.user) {
+          await detachPushSubscription();
           await supabase
             .from("profiles")
             .update({ last_seen_at: null })
             .eq("id", session.user.id);
+        }
         const { error } = await supabase.auth.signOut({ scope: "local" });
         if (error) throw error;
         try {

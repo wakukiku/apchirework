@@ -15,3 +15,5 @@ vite.config.js
 vite.config.d.ts
 capacitor.config.js
 capacitor.config.d.ts
+
+supabase/.temp/
