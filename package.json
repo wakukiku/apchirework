@@ -1,0 +1,43 @@
+{
+  "name": "apchi",
+  "private": true,
+  "version": "1.2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "cap:sync": "npm run build && cap sync",
+    "cap:add:android": "cap add android",
+    "cap:android": "npm run build && cap sync android && cap open android",
+    "typecheck": "tsc -b --pretty false",
+    "test": "node --test tests/*.test.mjs",
+    "test:ui": "playwright test",
+    "format": "prettier --write src tests *.ts *.json"
+  },
+  "dependencies": {
+    "@capacitor/core": "^7.4.3",
+    "@supabase/supabase-js": "^2.75.1",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.9.4"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/cli": "^7.4.3",
+    "@electric-sql/pglite": "^0.5.8",
+    "@playwright/test": "^1.63.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^5.2.0",
+    "prettier": "^3.9.9",
+    "typescript": "~5.6.3",
+    "vite": "^7.3.7",
+    "vite-plugin-pwa": "^1.1.0"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}

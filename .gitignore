@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.vite/
+android/.gradle/
+android/local.properties
+.env
+.env.local
+.env.*.local
+.DS_Store
+Thumbs.db
+*.tsbuildinfo
+test-results/
+playwright-report/
+vite.config.js
+vite.config.d.ts
+capacitor.config.js
+capacitor.config.d.ts
