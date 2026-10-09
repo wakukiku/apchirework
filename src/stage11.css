@@ -1020,7 +1020,72 @@ body {
   line-height: 1;
   letter-spacing: -0.035em;
 }
+/* ===== Mobile keyboard layout ===== */
 
+@media (max-width: 820px) {
+  html[data-chat-keyboard-open],
+  html[data-chat-keyboard-open] body,
+  html[data-chat-keyboard-open] #root {
+    height: var(--visual-height);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  html[data-chat-keyboard-open] .app-shell {
+    width: 100%;
+    height: var(--visual-height);
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  /*
+   * Пока пользователь печатает, глобальная шапка не занимает
+   * половину полезной высоты экрана.
+   */
+  html[data-chat-keyboard-open] .app-header,
+  html[data-chat-keyboard-open] .author-mark {
+    display: none;
+  }
+
+  html[data-chat-keyboard-open] .app-frame {
+    height: 100%;
+    min-height: 0;
+    padding: 5px;
+    border-radius: 22px;
+    overflow: hidden;
+  }
+
+  html[data-chat-keyboard-open] .app-content {
+    height: 100%;
+    min-height: 0;
+  }
+
+  html[data-chat-keyboard-open] .messenger {
+    height: 100%;
+    min-height: 0;
+  }
+
+  html[data-chat-keyboard-open] .messenger.chat-open .conversation-panel {
+    height: 100%;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  html[data-chat-keyboard-open] .conversation-header {
+    flex-shrink: 0;
+  }
+
+  html[data-chat-keyboard-open] .messages {
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  html[data-chat-keyboard-open] .composer-wrap {
+    min-height: 0;
+  }
+}
 @media (max-width: 820px) {
   .composer-stage11 {
     grid-template-columns: minmax(0, 1fr) 38px 42px;

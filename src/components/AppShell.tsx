@@ -101,15 +101,51 @@ export function AppShell() {
   }, [user?.id]);
   useEffect(() => {
     const viewport = window.visualViewport;
-    const resize = () => {
-      document.documentElement.style.setProperty(
-        "--visual-height",
-        `${viewport?.height ?? window.innerHeight}px`,
-      );
+    const root = document.documentElement;
+
+    let expandedHeight = viewport?.height ?? window.innerHeight;
+
+    const updateViewport = () => {
+      const height = viewport?.height ?? window.innerHeight;
+
+      if (height > expandedHeight) {
+        expandedHeight = height;
+      }
+
+      const active = document.activeElement;
+
+      const composerFocused =
+        (active instanceof HTMLInputElement ||
+          active instanceof HTMLTextAreaElement) &&
+        active.closest(".composer") !== null;
+
+      const keyboardOpen = composerFocused && expandedHeight - height > 120;
+
+      root.style.setProperty("--visual-height", `${Math.round(height)}px`);
+
+      root.toggleAttribute("data-chat-keyboard-open", keyboardOpen);
     };
-    resize();
-    viewport?.addEventListener("resize", resize);
-    return () => viewport?.removeEventListener("resize", resize);
+
+    const handleFocus = () => {
+      requestAnimationFrame(updateViewport);
+    };
+
+    updateViewport();
+
+    viewport?.addEventListener("resize", updateViewport);
+    viewport?.addEventListener("scroll", updateViewport);
+    document.addEventListener("focusin", handleFocus);
+    document.addEventListener("focusout", handleFocus);
+
+    return () => {
+      viewport?.removeEventListener("resize", updateViewport);
+      viewport?.removeEventListener("scroll", updateViewport);
+      document.removeEventListener("focusin", handleFocus);
+      document.removeEventListener("focusout", handleFocus);
+
+      root.removeAttribute("data-chat-keyboard-open");
+      root.style.removeProperty("--visual-height");
+    };
   }, []);
   useEffect(() => {
     setMenuOpen(false);
