@@ -195,7 +195,7 @@ export async function notifyMessage(
       const options = {
         body: "Новое сообщение",
         icon: "/pwa-192x192.png",
-        badge: "/pwa-192x192.png",
+        badge: "/notification-badge.png",
         tag: "apchi:" + chat.conversation_id,
         data: { url: "/chats/" + chat.conversation_id },
       };

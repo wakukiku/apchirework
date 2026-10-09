@@ -74,7 +74,7 @@ self.addEventListener("push", (event: PushEvent) => {
       await self.registration.showNotification(payload.title || "Apchi", {
         body: payload.body || "Новое сообщение",
         icon: "/pwa-192x192.png",
-        badge: "/pwa-192x192.png",
+        badge: "/notification-badge.png",
         tag: payload.conversation_id
           ? `apchi:${payload.conversation_id}`
           : "apchi:message",
