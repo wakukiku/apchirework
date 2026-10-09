@@ -146,3 +146,21 @@ supabase/
 **wakukiku**
 
 GitHub: https://github.com/wakukiku
+
+## Web Push
+
+Apchi поддерживает системные Web Push-уведомления для установленного PWA. Клиент хранит только публичный VAPID-ключ, а приватный ключ используется только в Supabase Edge Function.
+
+Публичная переменная окружения:
+
+```env
+VITE_VAPID_PUBLIC_KEY=
+```
+
+Сгенерировать VAPID-пару можно без стороннего сервиса:
+
+```bash
+npm run vapid:generate
+```
+
+Для production Edge Function `send-push` нужны секреты `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` и `VAPID_SUBJECT`. Подписки устройств хранятся в `push_subscriptions`; mute и block проверяются на сервере перед отправкой.

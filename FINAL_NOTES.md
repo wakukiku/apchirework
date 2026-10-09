@@ -54,3 +54,24 @@ Android: меню аватара → «Установить Apchi». iPhone: э�
 8. Установить PWA на Android/iPhone и проверить standalone.
 
 Без `.env.local` нельзя честно проверить реальную доставку email, двухаккаунтный Realtime, Storage, системные уведомления, Edge Function и настройки production Supabase. Учётные данные и секреты в проект/ZIP не записывались.
+
+## Web Push (006)
+
+Для настоящих системных уведомлений при полностью закрытом PWA добавлена миграция `006_web_push.sql` и Edge Function `send-push`.
+
+Перед включением в production:
+
+1. Выполнить `npm run vapid:generate` и сохранить выданную пару ключей.
+2. В Vercel добавить только публичный ключ: `VITE_VAPID_PUBLIC_KEY`.
+3. В Supabase → Edge Functions → Secrets добавить:
+   - `VAPID_PUBLIC_KEY`
+   - `VAPID_PRIVATE_KEY`
+   - `VAPID_SUBJECT=https://apchi.fun`
+4. Выполнить `supabase/migrations/006_web_push.sql` один раз поверх существующей базы.
+5. Развернуть функцию: `npx supabase functions deploy send-push`.
+6. После добавления `VITE_VAPID_PUBLIC_KEY` сделать новый Vercel deployment.
+7. На телефоне выключить/включить уведомления Apchi один раз, чтобы браузер создал и зарегистрировал PushSubscription.
+
+Private VAPID key не должен попадать в `.env.local`, Vercel frontend env, GitHub или ZIP.
+
+Проверка: закрыть PWA полностью, отправить сообщение со второго аккаунта, убедиться, что системное уведомление появляется в шторке; затем проверить mute, block, logout и тап по уведомлению.
