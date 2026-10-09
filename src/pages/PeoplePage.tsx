@@ -2,7 +2,7 @@ import { MessageCircle, Search, UserPlus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { Avatar, initialsFromName } from "../components/Avatar";
+import { Avatar, initialFromUsername } from "../components/Avatar";
 import { getOrCreateDirectConversation } from "../services/chats";
 import { discoverPeople } from "../services/profiles";
 import type { DiscoveredUser } from "../types";
@@ -78,7 +78,7 @@ export function PeoplePage() {
             return (
               <article className="person-card" key={person.id}>
                 <Avatar
-                  initials={initialsFromName(person.display_name)}
+                  initials={initialFromUsername(person.username)}
                   color={person.avatar_color}
                   online={online}
                   size="lg"
