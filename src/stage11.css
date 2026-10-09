@@ -989,9 +989,9 @@ body {
   margin-top: 11px;
 }
 :root {
-  --brand-mark-dot: #4b394f;
-  --brand-mark-left: #e7d6c4;
-  --brand-mark-right: #4b394f;
+  --brand-mark-dot: #59445f;
+  --brand-mark-left: #d3a08f;
+  --brand-mark-right: #59445f;
 }
 
 [data-theme="dark"] {
