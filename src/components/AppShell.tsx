@@ -36,89 +36,154 @@ import {
   standalone,
   watchInstall,
 } from "../services/install";
+
 export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
+
   const { user, signOut } = useAuth();
   const { theme, setTheme } = useSettings();
+
   const [profile, setProfile] = useState<Profile | null>(null);
+
   const [menuOpen, setMenuOpen] = useState(false);
+
   const [error, setError] = useState("");
+
   const [notify, setNotify] = useState(() => notificationEnabled(user!.id));
+
   const [busy, setBusy] = useState(false);
+
   const [installHelp, setInstallHelp] = useState(false);
+
   const [, setInstallRevision] = useState(0);
+
   const anchor = useRef<HTMLDivElement>(null);
+
   const trigger = useRef<HTMLButtonElement>(null);
-  useEffect(() => watchInstall(() => setInstallRevision((v) => v + 1)), []);
+
+  useEffect(
+    () => watchInstall(() => setInstallRevision((value) => value + 1)),
+    [],
+  );
+
   useEffect(() => {
     let active = true;
+
     void syncPushSubscription(user!.id)
       .then((enabled) => {
-        if (active) setNotify(enabled);
+        if (active) {
+          setNotify(enabled);
+        }
       })
       .catch(() => {
-        if (active) setNotify(notificationEnabled(user!.id));
+        if (active) {
+          setNotify(notificationEnabled(user!.id));
+        }
       });
+
     return () => {
       active = false;
     };
   }, [user?.id]);
+
   useEffect(() => {
     let active = true;
+
     const refresh = () => {
       getMyProfile()
-        .then((p) => {
-          if (active) setProfile(p);
+        .then((profile) => {
+          if (active) {
+            setProfile(profile);
+          }
         })
-        .catch((e) => {
-          if (active) setError(errorText(e));
+        .catch((error) => {
+          if (active) {
+            setError(errorText(error));
+          }
         });
     };
+
     refresh();
+
     window.addEventListener("apchi:profile-updated", refresh);
+
     return () => {
       active = false;
+
       window.removeEventListener("apchi:profile-updated", refresh);
     };
   }, [user?.id]);
+
   useEffect(() => {
     const heartbeat = () => {
-      if (document.visibilityState === "visible")
+      if (document.visibilityState === "visible") {
         void supabase
           .from("profiles")
-          .update({ last_seen_at: new Date().toISOString() })
+          .update({
+            last_seen_at: new Date().toISOString(),
+          })
           .eq("id", user!.id)
           .then(() => {});
+      }
     };
+
     heartbeat();
+
     const timer = setInterval(heartbeat, 30000);
+
     document.addEventListener("visibilitychange", heartbeat);
+
     return () => {
       clearInterval(timer);
+
       document.removeEventListener("visibilitychange", heartbeat);
     };
   }, [user?.id]);
+
+  /*
+   * Mobile keyboard handling.
+   *
+   * Android:
+   * - uses visual viewport height.
+   *
+   * iOS:
+   * - also accounts for viewport offset and
+   *   Safari/PWA automatic page scrolling.
+   */
   useEffect(() => {
     const viewport = window.visualViewport;
+
     const root = document.documentElement;
+
     const ios = isIOS();
 
     let expandedHeight = viewport?.height ?? window.innerHeight;
+
     let iosLocked = false;
+
     let savedScrollX = 0;
     let savedScrollY = 0;
 
     const unlockIOS = () => {
-      if (!iosLocked) return;
+      if (!iosLocked) {
+        return;
+      }
+
       iosLocked = false;
+
       root.removeAttribute("data-ios-chat-keyboard-open");
+
       root.style.removeProperty("--ios-scroll-lock");
-      requestAnimationFrame(() => window.scrollTo(savedScrollX, savedScrollY));
+
+      requestAnimationFrame(() => {
+        window.scrollTo(savedScrollX, savedScrollY);
+      });
     };
 
     const updateViewport = () => {
       const height = viewport?.height ?? window.innerHeight;
+
       const offsetTop = viewport?.offsetTop ?? 0;
 
       if (height > expandedHeight) {
@@ -135,18 +200,24 @@ export function AppShell() {
       const keyboardOpen = composerFocused && expandedHeight - height > 120;
 
       root.style.setProperty("--visual-height", `${Math.round(height)}px`);
+
       root.style.setProperty(
         "--visual-offset-top",
         `${Math.max(0, Math.round(offsetTop))}px`,
       );
 
       root.toggleAttribute("data-chat-keyboard-open", keyboardOpen);
+
       if (ios && keyboardOpen) {
         if (!iosLocked) {
           iosLocked = true;
+
           savedScrollX = window.scrollX;
+
           savedScrollY = window.scrollY;
+
           root.style.setProperty("--ios-scroll-lock", `${-savedScrollY}px`);
+
           root.setAttribute("data-ios-chat-keyboard-open", "");
         }
       } else {
@@ -161,78 +232,135 @@ export function AppShell() {
     updateViewport();
 
     viewport?.addEventListener("resize", updateViewport);
+
     viewport?.addEventListener("scroll", updateViewport);
+
     document.addEventListener("focusin", handleFocus);
+
     document.addEventListener("focusout", handleFocus);
 
     return () => {
       viewport?.removeEventListener("resize", updateViewport);
+
       viewport?.removeEventListener("scroll", updateViewport);
+
       document.removeEventListener("focusin", handleFocus);
+
       document.removeEventListener("focusout", handleFocus);
 
       root.removeAttribute("data-chat-keyboard-open");
+
       unlockIOS();
+
       root.style.removeProperty("--visual-height");
+
       root.style.removeProperty("--visual-offset-top");
     };
   }, []);
+
   useEffect(() => {
     setMenuOpen(false);
+
     if (
       /^\/chats\/[^/]+$/.test(location.pathname) &&
       !location.state?.fromChats
     ) {
       const target = location.pathname;
-      navigate("/chats", { replace: true });
-      queueMicrotask(() => navigate(target, { state: { fromChats: true } }));
+
+      navigate("/chats", {
+        replace: true,
+      });
+
+      queueMicrotask(() =>
+        navigate(target, {
+          state: {
+            fromChats: true,
+          },
+        }),
+      );
     }
   }, [location.pathname, navigate]);
+
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen) {
+      return;
+    }
+
     anchor.current
       ?.querySelector<HTMLElement>(".profile-dropdown button")
       ?.focus();
-    const outside = (e: PointerEvent) => {
-      if (!anchor.current?.contains(e.target as Node)) setMenuOpen(false);
-    };
-    const keys = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+
+    const outside = (event: PointerEvent) => {
+      if (!anchor.current?.contains(event.target as Node)) {
         setMenuOpen(false);
+      }
+    };
+
+    const keys = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+
         trigger.current?.focus();
       }
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        e.preventDefault();
+
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+
         const buttons = Array.from(
           anchor.current?.querySelectorAll<HTMLButtonElement>(
             ".profile-dropdown button:not(:disabled)",
           ) ?? [],
         );
+
         const index = buttons.indexOf(
           document.activeElement as HTMLButtonElement,
         );
+
         buttons[
-          (index + (e.key === "ArrowDown" ? 1 : -1) + buttons.length) %
+          (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) %
             buttons.length
         ]?.focus();
       }
     };
+
     document.addEventListener("pointerdown", outside);
+
     document.addEventListener("keydown", keys);
+
     return () => {
       document.removeEventListener("pointerdown", outside);
+
       document.removeEventListener("keydown", keys);
     };
   }, [menuOpen]);
+
   const links = [
-    { to: "/chats", label: "Чаты", icon: MessageCircle },
-    { to: "/drafts", label: "Черновик", icon: PencilLine },
-    { to: "/friends", label: "Друзья", icon: UsersRound },
-    { to: "/archive", label: "Архив", icon: Archive },
+    {
+      to: "/chats",
+      label: "Чаты",
+      icon: MessageCircle,
+    },
+    {
+      to: "/drafts",
+      label: "Черновик",
+      icon: PencilLine,
+    },
+    {
+      to: "/friends",
+      label: "Друзья",
+      icon: UsersRound,
+    },
+    {
+      to: "/archive",
+      label: "Архив",
+      icon: Archive,
+    },
   ];
-  const chatOpen = /^\/chats\/[^/]+$/.test(location.pathname);
+
+  const isOpenChat = /^\/chats\/[^/]+$/.test(location.pathname);
+
   return (
-    <div className={`app-shell${chatOpen ? " chat-route-open" : ""}`}>
+    <div className={`app-shell${isOpenChat ? " open-chat-route" : ""}`}>
       <header className="app-header">
         <div className="header-top-row">
           <div className="profile-anchor" ref={anchor}>
@@ -241,7 +369,7 @@ export function AppShell() {
               ref={trigger}
               aria-label="Открыть меню профиля"
               aria-expanded={menuOpen}
-              onClick={() => setMenuOpen((v) => !v)}
+              onClick={() => setMenuOpen((value) => !value)}
             >
               <Avatar
                 initials={initialFromUsername(profile?.username)}
@@ -249,92 +377,119 @@ export function AppShell() {
                 color={profile?.avatar_color}
               />
             </button>
+
             {menuOpen && (
               <div className="profile-dropdown">
                 <button onClick={() => navigate("/profile")}>
                   <UserRound size={17} />
                   <span>Мой профиль</span>
                 </button>
+
                 <button onClick={() => navigate("/blocked")}>
                   <Shield size={17} />
                   <span>Заблокированные</span>
                 </button>
+
                 <div className="menu-divider" />
+
                 {!standalone() && (canPromptInstall() || isIOS()) && (
                   <button
                     onClick={async () => {
                       setMenuOpen(false);
-                      if (isIOS() && !canPromptInstall()) setInstallHelp(true);
-                      else if (!(await promptInstall())) setInstallHelp(true);
+
+                      if (isIOS() && !canPromptInstall()) {
+                        setInstallHelp(true);
+                      } else if (!(await promptInstall())) {
+                        setInstallHelp(true);
+                      }
                     }}
                   >
                     <Download size={17} />
                     <span>Установить Apchi</span>
                   </button>
                 )}
+
                 <button onClick={() => navigate("/privacy")}>
                   <Shield size={17} />
                   <span>Конфиденциальность</span>
                 </button>
+
                 <div className="menu-divider" />
+
                 <button
                   className={theme === "light" ? "selected" : ""}
                   onClick={() => setTheme("light")}
                 >
                   <Sun size={17} />
+
                   <span>Светлая тема</span>
+
                   {theme === "light" && <b aria-hidden="true">✓</b>}
                 </button>
+
                 <button
                   className={theme === "dark" ? "selected" : ""}
                   onClick={() => setTheme("dark")}
                 >
                   <Moon size={17} />
+
                   <span>Тёмная тема</span>
+
                   {theme === "dark" && <b aria-hidden="true">✓</b>}
                 </button>
+
                 <div className="menu-divider" />
+
                 <button
                   disabled={busy}
                   onClick={async () => {
                     setBusy(true);
                     setError("");
+
                     try {
                       setNotify(await toggleNotifications(user!.id));
-                    } catch (e) {
-                      setError(errorText(e));
+                    } catch (error) {
+                      setError(errorText(error));
                     } finally {
                       setBusy(false);
                     }
                   }}
                 >
                   <Bell size={17} />
+
                   <span>
                     {notify ? "Выключить уведомления" : "Включить уведомления"}
                   </span>
                 </button>
+
                 <button
                   className="danger"
                   disabled={busy}
                   onClick={async () => {
                     setBusy(true);
+
                     try {
                       await signOut();
-                    } catch (e) {
-                      setError(errorText(e));
+                    } catch (error) {
+                      setError(errorText(error));
+
                       setBusy(false);
                     }
                   }}
                 >
                   <LogOut size={17} />
+
                   <span>Выйти</span>
                 </button>
               </div>
             )}
           </div>
+
           <Brand />
+
           <span className="header-balance" aria-hidden="true" />
         </div>
+
         <nav className="main-nav" aria-label="Основная навигация">
           {links.map(({ to, label, icon: Icon }) => (
             <NavLink
@@ -345,30 +500,40 @@ export function AppShell() {
               }
             >
               <Icon size={18} />
+
               <span>{label}</span>
             </NavLink>
           ))}
         </nav>
       </header>
+
       <ErrorNotice error={error} />
+
       <main className="app-frame">
         <div className="app-content">
           <Outlet />
         </div>
       </main>
+
       <AuthorMark />
+
       {installHelp && (
         <Modal title="Установить Apchi" onClose={() => setInstallHelp(false)}>
           <p>Чтобы установить Apchi на iPhone или iPad:</p>
+
           <ol>
             <li>Нажмите «Поделиться» в браузере.</li>
+
             <li>Выберите «На экран Домой».</li>
+
             <li>Нажмите «Добавить».</li>
           </ol>
+
           <p>
             На Android откройте меню браузера и выберите «Установить
             приложение», если системное окно не появилось.
           </p>
+
           <button
             className="primary-button"
             onClick={() => setInstallHelp(false)}

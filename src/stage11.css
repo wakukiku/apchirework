@@ -1091,3 +1091,9 @@ body {
     grid-template-columns: minmax(0, 1fr) 38px 42px;
   }
 }
+/* Авторский тег не должен перекрывать composer в открытом мобильном чате */
+@media (max-width: 820px) {
+  .app-shell.open-chat-route .author-mark {
+    display: none;
+  }
+}
