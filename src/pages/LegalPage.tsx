@@ -82,6 +82,18 @@ export function LegalPage({ kind }: { kind: Kind }) {
           <Link to="/safety">Безопасность</Link>
           <Link to="/chats">Вернуться в Apchi</Link>
         </nav>
+        {kind === "privacy" && (
+          <section className="privacy-danger-zone">
+            <h2>Удаление аккаунта</h2>
+            <p>
+              Если вы хотите полностью удалить аккаунт и связанные личные
+              данные, используйте защищённую страницу удаления.
+            </p>
+            <Link className="danger-link" to="/delete-account">
+              Удалить аккаунт
+            </Link>
+          </section>
+        )}
       </article>
     </main>
   );

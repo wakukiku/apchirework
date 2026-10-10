@@ -272,9 +272,6 @@ export function ProfilePage() {
                   <Link to="/privacy">Конфиденциальность</Link>
                   <Link to="/terms">Условия</Link>
                   <Link to="/safety">Безопасность</Link>
-                  <Link className="danger-link" to="/delete-account">
-                    Удалить аккаунт
-                  </Link>
                 </section>
               </div>
             )}

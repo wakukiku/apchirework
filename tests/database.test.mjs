@@ -36,6 +36,8 @@ test("fresh schema + Stage 1.1 + web migration: account isolation and actual RPC
     "supabase/migrations/003_web_complete.sql",
     "supabase/migrations/004_gallery_colors_backgrounds.sql",
     "supabase/migrations/005_public_release.sql",
+    "supabase/migrations/006_web_push.sql",
+    "supabase/migrations/007_chat_experience.sql",
   ]) {
     let source = await readFile(new URL("../" + file, import.meta.url), "utf8");
     source = source.replace("create extension if not exists pgcrypto;", "");
@@ -61,7 +63,7 @@ test("fresh schema + Stage 1.1 + web migration: account isolation and actual RPC
   assert.equal(
     (
       await sql(
-        "select dialog_theme from conversation_members where user_id='90000000-0000-4000-8000-000000000001'",
+        "select dialog_theme from conversation_appearance where conversation_id='90000000-0000-4000-8000-000000000002'",
       )
     )[0].dialog_theme,
     "sage",
@@ -112,6 +114,7 @@ test("fresh schema + Stage 1.1 + web migration: account isolation and actual RPC
     )
   )[0];
   await sql("select set_chat_setting($1,'pin',true)", [cid]);
+  await sql("select set_chat_setting($1,'theme',true,'moon')", [cid]);
   await sql("select set_chat_setting($1,'archive',true)", [cid]);
   assert.equal(
     (await sql("select * from list_my_direct_chats(false)")).length,
@@ -128,6 +131,27 @@ test("fresh schema + Stage 1.1 + web migration: account isolation and actual RPC
   assert.equal(
     (await sql("select * from list_my_direct_chats(true)"))[0].pinned,
     false,
+  );
+  assert.equal(
+    (await sql("select * from list_my_direct_chats(true)"))[0].dialog_theme,
+    "moon",
+  );
+  const reply = (
+    await sql(
+      "insert into messages(conversation_id,sender_id,body,reply_to_message_id) values($1,$2,'reply',$3) returning *",
+      [cid, b, first.id],
+    )
+  )[0];
+  assert.equal(reply.reply_to_message_id, first.id);
+  await sql("select delete_message_for_me($1)", [first.id]);
+  assert.equal(
+    (await sql("select * from messages where id=$1", [first.id])).length,
+    0,
+  );
+  await as(a);
+  assert.equal(
+    (await sql("select * from messages where id=$1", [first.id])).length,
+    1,
   );
   await as(c);
   assert.equal((await sql("select * from messages")).length, 0);
@@ -208,6 +232,15 @@ test("fresh schema + Stage 1.1 + web migration: account isolation and actual RPC
     (await sql("select * from list_my_direct_chats(true)"))[0].unread_count,
     0,
   );
+  await as(b);
+  assert.equal(
+    String(
+      (await sql("select * from list_my_direct_chats(true)"))[0]
+        .peer_last_read_at,
+    ),
+    String(second.created_at),
+  );
+  await as(a);
   await assert.rejects(() => sql("select delete_my_message($1)", [second.id]));
   await as(b);
   await sql("select delete_my_message($1)", [second.id]);
@@ -353,18 +386,23 @@ test("fresh schema + Stage 1.1 + web migration: account isolation and actual RPC
   );
   await sql("select set_dialog_background($1,$2)", [cid, bg]);
   assert.equal(
-    (await sql("select * from dialog_backgrounds"))[0].storage_path,
+    (await sql("select background_path from conversation_appearance"))[0]
+      .background_path,
     bg,
   );
   await as(b);
-  assert.equal((await sql("select * from dialog_backgrounds")).length, 0);
+  assert.equal(
+    (await sql("select background_path from conversation_appearance"))[0]
+      .background_path,
+    bg,
+  );
   assert.equal(
     (
       await sql(
         "select * from storage.objects where bucket_id='dialog-backgrounds'",
       )
     ).length,
-    0,
+    1,
   );
   await assert.rejects(() =>
     sql("select set_dialog_background($1,$2)", [cid, bg]),
@@ -375,7 +413,11 @@ test("fresh schema + Stage 1.1 + web migration: account isolation and actual RPC
   );
   await as(a);
   await sql("select set_dialog_background($1,null)", [cid]);
-  assert.equal((await sql("select * from dialog_backgrounds")).length, 0);
+  assert.equal(
+    (await sql("select background_path from conversation_appearance"))[0]
+      .background_path,
+    null,
+  );
   await db.exec("reset role;set role anon");
   await assert.rejects(() => sql("select * from list_my_direct_chats(true)"));
   await assert.rejects(() => sql("select * from discover_people(10)"));

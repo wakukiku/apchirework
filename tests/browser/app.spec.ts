@@ -27,7 +27,10 @@ async function backend(page: Page, auth = true) {
     sender_id: i % 3 === 0 ? me : peer,
     body: "Сообщение " + (i + 1) + " — проверка истории диалога.",
     created_at: time(i),
+    edited_at: null,
     deleted_at: null,
+    reply_to_message_id: null,
+    reply_to: null,
     attachment_path: null,
     attachment_name: null,
     attachment_type: null,
@@ -45,6 +48,7 @@ async function backend(page: Page, auth = true) {
     last_message: "Последнее сообщение",
     last_message_at: time(139),
     last_read_at: time(79),
+    peer_last_read_at: null,
     archived: false,
     pinned: false,
     muted: false,
@@ -202,13 +206,14 @@ async function backend(page: Page, auth = true) {
           last_message_at: time(139),
         },
       ];
-    else if (path.endsWith("/rpc/delete_my_message")) {
-      messages = messages.map((m) =>
-        m.id === body.message_id
-          ? { ...m, body: "", deleted_at: time(200) }
-          : m,
-      );
+    else if (path.endsWith("/rpc/delete_message_for_me")) {
+      messages = messages.filter((m) => m.id !== body.message_id);
       result = null;
+    } else if (path.endsWith("/rpc/delete_message_for_everyone")) {
+      messages = messages.filter((m) => m.id !== body.message_id);
+      result = null;
+    } else if (path.endsWith("/conversation_appearance")) {
+      result = single ? null : [];
     } else if (path.endsWith("/profiles")) {
       if (method === "PATCH") ownProfile = { ...ownProfile, ...body };
       result = single ? ownProfile : [ownProfile];
@@ -242,7 +247,12 @@ async function backend(page: Page, auth = true) {
         const m = {
           ...body,
           created_at: time(300 + messages.length),
+          edited_at: null,
           deleted_at: null,
+          reply_to: body.reply_to_message_id
+            ? (messages.find((item) => item.id === body.reply_to_message_id) ??
+              null)
+            : null,
         };
         messages.push(m);
         result = m;
@@ -446,6 +456,7 @@ test("chat themes, scroll preservation, send focus, management and browser Back"
     page.getByRole("button", { name: "Открепить", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Архивировать", exact: true }).click();
+  await page.getByRole("button", { name: "Назад к чатам" }).click();
   await page.getByRole("link", { name: "Архив", exact: true }).click();
   await expect(page.locator(".chat-row")).toHaveCount(1);
   await page.locator(".row-menu").click();
@@ -585,6 +596,80 @@ test("incoming messages do not move a reader; attachments use Storage", async ({
   await expect(page.locator(".attachment-download")).toHaveCount(1);
   await page.getByRole("button", { name: "Медиа и файлы" }).click();
   await expect(page.locator("dialog .attachment-download")).toHaveCount(1);
+});
+
+test("message reply, swipe and long-press actions work on mobile", async ({
+  page,
+}) => {
+  await backend(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/chats/" + cid);
+  await expect(page.locator(".main-nav")).toBeHidden();
+
+  const target = page.locator(".message.theirs").last();
+  const targetId = await target.getAttribute("data-message");
+  await target.getByRole("button", { name: "Действия с сообщением" }).click();
+  await page.getByRole("button", { name: "Ответить", exact: true }).click();
+  await expect(page.locator(".selected-reply")).toContainText("Собеседник");
+  await page.getByRole("textbox", { name: "Сообщение" }).fill("Ответ");
+  await page.getByRole("button", { name: "Отправить", exact: true }).click();
+
+  const sent = page.locator(".message.mine").last();
+  await expect(sent.locator(".message-reply-quote")).toBeVisible();
+  await expect(sent.getByLabel("Отправлено")).toBeVisible();
+  await sent.locator(".message-reply-quote").click();
+  await expect(page.locator(`[data-message="${targetId}"]`)).toHaveClass(
+    /message-highlighted/,
+  );
+
+  await target.dispatchEvent("pointerdown", {
+    pointerType: "touch",
+    pointerId: 11,
+    button: 0,
+    clientX: 260,
+    clientY: 420,
+  });
+  await target.dispatchEvent("pointermove", {
+    pointerType: "touch",
+    pointerId: 11,
+    button: 0,
+    clientX: 180,
+    clientY: 420,
+  });
+  await target.dispatchEvent("pointerup", {
+    pointerType: "touch",
+    pointerId: 11,
+    button: 0,
+    clientX: 180,
+    clientY: 420,
+  });
+  await expect(page.locator(".selected-reply")).toBeVisible();
+  await page.getByRole("button", { name: "Отменить ответ" }).click();
+
+  await sent.dispatchEvent("pointerdown", {
+    pointerType: "touch",
+    pointerId: 12,
+    button: 0,
+    clientX: 250,
+    clientY: 500,
+  });
+  await page.waitForTimeout(560);
+  await sent.dispatchEvent("pointerup", {
+    pointerType: "touch",
+    pointerId: 12,
+    button: 0,
+    clientX: 250,
+    clientY: 500,
+  });
+  await expect(
+    page.getByRole("heading", { name: "Действия с сообщением" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Удалить у меня", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Удалить у всех", exact: true }),
+  ).toBeVisible();
 });
 
 test("mobile long press opens actions and drag cancels it", async ({
@@ -863,13 +948,13 @@ test("peer avatar history stays private and a real report can be submitted", asy
   expect(report?.reported_user).toBe(peer);
 });
 
-test("custom background validates, previews, persists per dialog and resets", async ({
+test("custom background validates, previews, persists for both chat members and resets", async ({
   page,
 }) => {
   await backend(page);
   let stored: string | null = null;
-  await page.route("**/rest/v1/dialog_backgrounds?**", (route) =>
-    route.fulfill({ json: stored ? { storage_path: stored } : null }),
+  await page.route("**/rest/v1/conversation_appearance?**", (route) =>
+    route.fulfill({ json: stored ? { background_path: stored } : null }),
   );
   await page.route("**/rest/v1/rpc/set_dialog_background", async (route) => {
     stored = route.request().postDataJSON().path;

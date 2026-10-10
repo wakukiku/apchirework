@@ -125,6 +125,20 @@ export function ChatsProvider({ children }: { children: ReactNode }) {
         },
         () => void refresh(),
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "conversation_appearance" },
+        () => void refresh(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "conversation_read_receipts",
+        },
+        () => void refresh(),
+      )
       .subscribe((status) => {
         if (live.current) {
           setConnected(status === "SUBSCRIBED");

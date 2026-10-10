@@ -8,6 +8,7 @@ import { ErrorNotice } from "../components/ErrorNotice";
 import { Modal } from "../components/Modal";
 import { errorText } from "../lib/logic";
 import { ReportModal } from "../components/ReportModal";
+import { AvatarViewer } from "../components/ImageViewer";
 export function UserPage() {
   const { userId } = useParams();
   const navigate = useNavigate();
@@ -17,6 +18,7 @@ export function UserPage() {
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [avatarOpen, setAvatarOpen] = useState(false);
   useEffect(() => {
     let live = true;
     setProfile(undefined);
@@ -50,14 +52,20 @@ export function UserPage() {
       {profile ? (
         <>
           <div className="profile-hero">
-            <div>
+            <button
+              type="button"
+              className="profile-other-avatar-button"
+              disabled={!profile.avatar_url}
+              aria-label="Открыть аватар"
+              onClick={() => setAvatarOpen(true)}
+            >
               <Avatar
                 size="lg"
                 initials={initialFromUsername(profile.username)}
                 src={profile.avatar_url}
                 color={profile.avatar_color}
               />
-            </div>
+            </button>
             <div>
               <h1>{profile.display_name}</h1>
               <span>@{profile.username}</span>
@@ -161,6 +169,13 @@ export function UserPage() {
                 Заблокировать
               </button>
             </Modal>
+          )}
+          {avatarOpen && profile.avatar_url && (
+            <AvatarViewer
+              title={`Аватар: ${profile.display_name}`}
+              canonicalUrl={profile.avatar_url}
+              onClose={() => setAvatarOpen(false)}
+            />
           )}
         </>
       ) : (

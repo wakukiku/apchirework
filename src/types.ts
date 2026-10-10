@@ -57,6 +57,7 @@ export type ChatSummary = {
   last_message: string | null;
   last_message_at: string | null;
   last_read_at: string | null;
+  peer_last_read_at: string | null;
   archived: boolean;
   pinned: boolean;
   muted: boolean;
@@ -74,11 +75,18 @@ export type Message = {
   created_at: string;
   edited_at: string | null;
   deleted_at: string | null;
+  reply_to_message_id: string | null;
+  reply_to?: MessageReply | null;
   attachment_path: string | null;
   attachment_name: string | null;
   attachment_type: string | null;
   attachment_size: number | null;
 };
+
+export type MessageReply = Pick<
+  Message,
+  "id" | "sender_id" | "body" | "attachment_name" | "deleted_at"
+>;
 
 export type Draft = {
   id: string;

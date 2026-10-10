@@ -28,7 +28,11 @@ test("consolidated release schema installs on an empty database", async () => {
     "messages",
     "drafts",
     "reports",
-    "dialog_backgrounds",
+    "conversation_appearance",
+    "conversation_read_receipts",
+    "message_hidden_users",
+    "push_subscriptions",
+    "push_delivery_claims",
   ])
     assert.ok(names.includes(expected), expected);
   const functions = (
@@ -40,6 +44,10 @@ test("consolidated release schema installs on an empty database", async () => {
     "submit_report",
     "set_dialog_background",
     "remove_avatar",
+    "register_push_subscription",
+    "unregister_push_subscription",
+    "delete_message_for_me",
+    "delete_message_for_everyone",
   ])
     assert.ok(functions.includes(expected), expected);
   await db.close();

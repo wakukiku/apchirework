@@ -3,6 +3,7 @@ import { Download } from "lucide-react";
 import { attachmentUrl } from "../services/messages";
 import { errorText } from "../lib/logic";
 import type { Message } from "../types";
+import { ImageViewer } from "./ImageViewer";
 export function Attachment({
   message,
   onLoad,
@@ -13,6 +14,7 @@ export function Attachment({
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(false);
   const image = message.attachment_type?.startsWith("image/");
   useEffect(() => {
     let live = true;
@@ -50,29 +52,45 @@ export function Attachment({
   return (
     <div className="attachment">
       {url && image && (
-        <img
+        <button
+          type="button"
+          className="attachment-image-button"
+          aria-label="Открыть изображение"
+          onClick={() => setPreview(true)}
+        >
+          <img
+            src={url}
+            alt={message.attachment_name ?? "Изображение"}
+            onLoad={onLoad}
+            onError={() => {
+              setUrl("");
+              setError("Не удалось загрузить изображение.");
+            }}
+          />
+        </button>
+      )}
+      {!image && (
+        <button
+          type="button"
+          className="attachment-download"
+          disabled={busy}
+          onClick={() => void download()}
+        >
+          <Download size={16} />
+          <span>
+            {message.attachment_name} ·{" "}
+            {Math.ceil((message.attachment_size ?? 0) / 1024)} КБ
+          </span>
+        </button>
+      )}
+      {error && <small role="alert">{error}</small>}
+      {preview && url && (
+        <ImageViewer
+          title="Изображение"
           src={url}
-          alt={message.attachment_name ?? "Изображение"}
-          onLoad={onLoad}
-          onError={() => {
-            setUrl("");
-            setError("Не удалось загрузить превью. Файл можно скачать.");
-          }}
+          onClose={() => setPreview(false)}
         />
       )}
-      <button
-        type="button"
-        className="attachment-download"
-        disabled={busy}
-        onClick={() => void download()}
-      >
-        <Download size={16} />
-        <span>
-          {message.attachment_name} ·{" "}
-          {Math.ceil((message.attachment_size ?? 0) / 1024)} КБ
-        </span>
-      </button>
-      {error && <small role="alert">{error}</small>}
     </div>
   );
 }

@@ -3,6 +3,9 @@ import { supabase } from "../lib/supabase";
 import { validateAttachment } from "../lib/logic";
 import type { Message } from "../types";
 
+const messageSelect =
+  "*, reply_to:messages!messages_reply_to_message_id_fkey(id,sender_id,body,attachment_name,deleted_at)";
+
 async function dispatchPush(messageId: string) {
   try {
     await supabase.functions.invoke("send-push", {
@@ -16,7 +19,7 @@ async function dispatchPush(messageId: string) {
 export async function listMessages(cid: string, before?: Message) {
   let q = supabase
     .from("messages")
-    .select("*")
+    .select(messageSelect)
     .eq("conversation_id", cid)
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
@@ -34,7 +37,7 @@ export async function listMessageWindow(cid: string, oldest: string) {
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await supabase
       .from("messages")
-      .select("*")
+      .select(messageSelect)
       .eq("conversation_id", cid)
       .gte("created_at", oldest)
       .order("created_at", { ascending: true })
@@ -50,7 +53,7 @@ export async function searchMessages(cid: string, query: string, offset = 0) {
   const term = query.replace(/[\\%_]/g, "\\$&");
   const { data, error } = await supabase
     .from("messages")
-    .select("*")
+    .select(messageSelect)
     .eq("conversation_id", cid)
     .is("deleted_at", null)
     .ilike("body", `%${term}%`)
@@ -63,7 +66,7 @@ export async function searchMessages(cid: string, query: string, offset = 0) {
 export async function listMedia(cid: string, offset = 0) {
   const { data, error } = await supabase
     .from("messages")
-    .select("*")
+    .select(messageSelect)
     .eq("conversation_id", cid)
     .is("deleted_at", null)
     .not("attachment_path", "is", null)
@@ -78,6 +81,7 @@ export async function sendMessage(
   body: string,
   file?: File,
   id: string = crypto.randomUUID(),
+  replyToMessageId?: string,
 ) {
   const user = await currentUser();
   if (!user) throw new Error("Нет активной сессии");
@@ -96,18 +100,19 @@ export async function sendMessage(
       conversation_id: cid,
       sender_id: user.id,
       body,
+      reply_to_message_id: replyToMessageId ?? null,
       attachment_path: path,
       attachment_name: file?.name ?? null,
       attachment_type: file?.type ?? null,
       attachment_size: file?.size ?? null,
     })
-    .select("*")
+    .select(messageSelect)
     .single();
   if (error) {
     // Reconcile an interrupted response with a possibly committed insert.
     const existing = await supabase
       .from("messages")
-      .select("*")
+      .select(messageSelect)
       .eq("id", id)
       .maybeSingle();
     if (existing.data) {
@@ -119,19 +124,30 @@ export async function sendMessage(
   void dispatchPush(data.id);
   return data as Message;
 }
-export async function deleteMessage(message: Message) {
-  const { error } = await supabase.rpc("delete_my_message", {
+export async function getMessage(messageId: string) {
+  const { data, error } = await supabase
+    .from("messages")
+    .select(messageSelect)
+    .eq("id", messageId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as Message | null) ?? null;
+}
+export async function deleteMessageForMe(message: Message) {
+  const { error } = await supabase.rpc("delete_message_for_me", {
     message_id: message.id,
   });
   if (error) throw error;
-  if (message.attachment_path) {
-    const { error: storageError } = await supabase.storage
-      .from("attachments")
-      .remove([message.attachment_path]);
-    if (storageError)
-      throw new Error(
-        "Сообщение удалено. Файл пока остался в закрытом хранилище.",
-      );
+}
+export async function deleteMessageForEveryone(message: Message) {
+  const { data: path, error } = await supabase.rpc(
+    "delete_message_for_everyone",
+    { message_id: message.id },
+  );
+  if (error) throw error;
+  if (path) {
+    // The message is already inaccessible; orphan cleanup is best-effort.
+    await supabase.storage.from("attachments").remove([path as string]);
   }
 }
 export async function attachmentUrl(path: string, download?: string) {

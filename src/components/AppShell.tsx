@@ -102,11 +102,24 @@ export function AppShell() {
   useEffect(() => {
     const viewport = window.visualViewport;
     const root = document.documentElement;
+    const ios = isIOS();
 
     let expandedHeight = viewport?.height ?? window.innerHeight;
+    let iosLocked = false;
+    let savedScrollX = 0;
+    let savedScrollY = 0;
+
+    const unlockIOS = () => {
+      if (!iosLocked) return;
+      iosLocked = false;
+      root.removeAttribute("data-ios-chat-keyboard-open");
+      root.style.removeProperty("--ios-scroll-lock");
+      requestAnimationFrame(() => window.scrollTo(savedScrollX, savedScrollY));
+    };
 
     const updateViewport = () => {
       const height = viewport?.height ?? window.innerHeight;
+      const offsetTop = viewport?.offsetTop ?? 0;
 
       if (height > expandedHeight) {
         expandedHeight = height;
@@ -122,8 +135,23 @@ export function AppShell() {
       const keyboardOpen = composerFocused && expandedHeight - height > 120;
 
       root.style.setProperty("--visual-height", `${Math.round(height)}px`);
+      root.style.setProperty(
+        "--visual-offset-top",
+        `${Math.max(0, Math.round(offsetTop))}px`,
+      );
 
       root.toggleAttribute("data-chat-keyboard-open", keyboardOpen);
+      if (ios && keyboardOpen) {
+        if (!iosLocked) {
+          iosLocked = true;
+          savedScrollX = window.scrollX;
+          savedScrollY = window.scrollY;
+          root.style.setProperty("--ios-scroll-lock", `${-savedScrollY}px`);
+          root.setAttribute("data-ios-chat-keyboard-open", "");
+        }
+      } else {
+        unlockIOS();
+      }
     };
 
     const handleFocus = () => {
@@ -144,7 +172,9 @@ export function AppShell() {
       document.removeEventListener("focusout", handleFocus);
 
       root.removeAttribute("data-chat-keyboard-open");
+      unlockIOS();
       root.style.removeProperty("--visual-height");
+      root.style.removeProperty("--visual-offset-top");
     };
   }, []);
   useEffect(() => {
@@ -200,8 +230,9 @@ export function AppShell() {
     { to: "/friends", label: "Друзья", icon: UsersRound },
     { to: "/archive", label: "Архив", icon: Archive },
   ];
+  const chatOpen = /^\/chats\/[^/]+$/.test(location.pathname);
   return (
-    <div className="app-shell">
+    <div className={`app-shell${chatOpen ? " chat-route-open" : ""}`}>
       <header className="app-header">
         <div className="header-top-row">
           <div className="profile-anchor" ref={anchor}>
@@ -244,13 +275,6 @@ export function AppShell() {
                 <button onClick={() => navigate("/privacy")}>
                   <Shield size={17} />
                   <span>Конфиденциальность</span>
-                </button>
-                <button
-                  onClick={() => navigate("/delete-account")}
-                  className="danger"
-                >
-                  <Shield size={17} />
-                  <span>Удалить аккаунт</span>
                 </button>
                 <div className="menu-divider" />
                 <button

@@ -7,11 +7,13 @@ export function Modal({
   children,
   onClose,
   busy = false,
+  className = "",
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   busy?: boolean;
+  className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const close = useRef(onClose);
@@ -29,7 +31,7 @@ export function Modal({
   return createPortal(
     <dialog
       ref={ref}
-      className="apchi-modal"
+      className={`apchi-modal ${className}`.trim()}
       aria-labelledby={id}
       onCancel={(e) => {
         e.preventDefault();

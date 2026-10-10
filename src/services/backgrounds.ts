@@ -2,12 +2,12 @@ import { supabase } from "../lib/supabase";
 import { currentUser } from "../lib/currentUser";
 export async function getBackground(cid: string) {
   const { data, error } = await supabase
-    .from("dialog_backgrounds")
-    .select("storage_path")
+    .from("conversation_appearance")
+    .select("background_path")
     .eq("conversation_id", cid)
     .maybeSingle();
   if (error) throw error;
-  return (data?.storage_path as string | undefined) ?? null;
+  return (data?.background_path as string | undefined) ?? null;
 }
 export async function backgroundUrl(path: string) {
   const { data, error } = await supabase.storage
@@ -69,7 +69,8 @@ export async function saveBackground(
     if (path) await supabase.storage.from("dialog-backgrounds").remove([path]);
     throw error;
   }
-  if (previous)
+  const user = await currentUser();
+  if (previous?.startsWith(user.id + "/"))
     await supabase.storage.from("dialog-backgrounds").remove([previous]);
   return path;
 }

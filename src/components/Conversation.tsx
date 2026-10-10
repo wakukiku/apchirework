@@ -14,10 +14,8 @@ import {
   Search,
   Send,
   Smile,
-  Trash2,
   X,
   FolderOpen,
-  Flag,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Avatar, initialFromUsername } from "./Avatar";
@@ -40,7 +38,9 @@ import {
   listMessages,
   listMessageWindow,
   sendMessage,
-  deleteMessage,
+  deleteMessageForMe,
+  deleteMessageForEveryone,
+  getMessage,
   searchMessages,
   listMedia,
 } from "../services/messages";
@@ -50,6 +50,8 @@ import { ReportModal } from "./ReportModal";
 
 import { DialogBackground } from "./DialogBackground";
 import { getBackground, backgroundUrl } from "../services/backgrounds";
+import { MessageItem } from "./MessageItem";
+import { AvatarViewer } from "./ImageViewer";
 const themes: [DialogTheme, string][] = [
   ["system", "Как в системе"],
   ["cream", "Крем"],
@@ -82,12 +84,16 @@ export function Conversation({
   const { user } = useAuth();
   const navigate = useNavigate();
   const cid = chat.conversation_id;
+  const [dialogTheme, setDialogThemeState] = useState(chat.dialog_theme);
+  const [peerReadAt, setPeerReadAt] = useState(chat.peer_last_read_at);
+  const [avatarOpen, setAvatarOpen] = useState(false);
   const backgroundRevision = useRef(0);
   const [backgroundPath, setBackgroundPath] = useState<string | null>(null);
   const [wallpaper, setWallpaper] = useState("");
   useEffect(() => {
     let active = true;
     const revision = backgroundRevision.current;
+    setBackgroundPath(null);
     getBackground(cid)
       .then((p) => {
         if (active && revision === backgroundRevision.current)
@@ -100,6 +106,10 @@ export function Conversation({
       active = false;
     };
   }, [cid]);
+  useEffect(() => {
+    setDialogThemeState(chat.dialog_theme);
+    setPeerReadAt(chat.peer_last_read_at);
+  }, [cid, chat.dialog_theme, chat.peer_last_read_at]);
   useEffect(() => {
     let active = true;
     setWallpaper("");
@@ -138,10 +148,16 @@ export function Conversation({
   const [results, setResults] = useState<Message[]>([]);
   const [resultBusy, setResultBusy] = useState(false);
   const [resultMore, setResultMore] = useState(false);
-  const [deleting, setDeleting] = useState<Message>();
+  const [replying, setReplying] = useState<Message>();
+  const [messageActions, setMessageActions] = useState<Message>();
+  const [deleting, setDeleting] = useState<{
+    message: Message;
+    mode: "me" | "everyone";
+  }>();
   const [reporting, setReporting] = useState<Message>();
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [newBelow, setNewBelow] = useState(false);
+  const [highlighted, setHighlighted] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
   const editor = useRef<HTMLInputElement>(null);
   const upload = useRef<HTMLInputElement>(null);
@@ -157,7 +173,16 @@ export function Conversation({
   const readStamp = useRef(chat.last_read_at ?? "");
   const readBusy = useRef(false);
   const queuedRead = useRef<Message>();
-  const retry = useRef<{ id: string; text: string; file?: File }>();
+  const retry = useRef<{
+    id: string;
+    text: string;
+    file?: File;
+    replyToMessageId?: string;
+  }>();
+  useEffect(() => {
+    readStamp.current = chat.last_read_at ?? "";
+    queuedRead.current = undefined;
+  }, [cid, chat.last_read_at]);
   const key = `apchi-scroll:${user!.id}:${cid}`;
   const savePosition = () => {
     const node = scroller.current;
@@ -305,15 +330,67 @@ export function Conversation({
           table: "messages",
           filter: "conversation_id=eq." + cid,
         },
-        (payload) => {
+        async (payload) => {
           if (cancelled || !("id" in payload.new)) return;
-          const m = payload.new as Message;
+          const raw = payload.new as Message;
+          let m = raw;
+          if (!raw.deleted_at) {
+            try {
+              m = (await getMessage(raw.id)) ?? raw;
+            } catch {
+              m = raw;
+            }
+          }
+          if (cancelled) return;
           buffered.push(m);
           if (initialized.current) {
             if (near.current) pendingPosition.current = { bottom: true };
             else if (payload.eventType === "INSERT") setNewBelow(true);
             setMessages((current) => mergeMessages(current, [m]));
           }
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "conversation_appearance",
+          filter: "conversation_id=eq." + cid,
+        },
+        (payload) => {
+          if (cancelled) return;
+          backgroundRevision.current++;
+          if (payload.eventType === "DELETE") {
+            setDialogThemeState("system");
+            setBackgroundPath(null);
+            return;
+          }
+          const appearance = payload.new as {
+            dialog_theme?: DialogTheme;
+            background_path?: string | null;
+          };
+          if (appearance.dialog_theme)
+            setDialogThemeState(appearance.dialog_theme);
+          setBackgroundPath(appearance.background_path ?? null);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "conversation_read_receipts",
+          filter: "conversation_id=eq." + cid,
+        },
+        (payload) => {
+          if (cancelled || payload.eventType === "DELETE") return;
+          const receipt = payload.new as {
+            user_id?: string;
+            last_read_at?: string | null;
+          };
+          if (receipt.user_id && receipt.user_id !== user!.id)
+            setPeerReadAt(receipt.last_read_at ?? null);
         },
       )
       .subscribe((status) => {
@@ -427,6 +504,43 @@ export function Conversation({
       if (alive.current) setOlderBusy(false);
     }
   }
+  function focusMessage(messageId: string) {
+    requestAnimationFrame(() => {
+      const node = scroller.current?.querySelector<HTMLElement>(
+        `[data-message="${messageId}"]`,
+      );
+      if (!node) return;
+      node.scrollIntoView({ block: "center", behavior: "smooth" });
+      setHighlighted(messageId);
+      window.setTimeout(
+        () =>
+          setHighlighted((current) => (current === messageId ? "" : current)),
+        1400,
+      );
+    });
+  }
+  async function jumpToMessage(messageId: string) {
+    if (messagesRef.current.some((m) => m.id === messageId && !m.deleted_at)) {
+      focusMessage(messageId);
+      return;
+    }
+    try {
+      const target = await getMessage(messageId);
+      if (!target || target.deleted_at)
+        throw new Error("Исходное сообщение недоступно");
+      const loaded = await listMessageWindow(cid, target.created_at);
+      pendingPosition.current = { unread: messageId };
+      setMessages((current) => mergeMessages(loaded, current));
+      setHighlighted(messageId);
+      window.setTimeout(
+        () =>
+          setHighlighted((current) => (current === messageId ? "" : current)),
+        1400,
+      );
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }
   async function submit(e: FormEvent) {
     e.preventDefault();
     editor.current?.focus();
@@ -434,10 +548,18 @@ export function Conversation({
       return;
     const text = input.trim();
     const selected = file;
+    const selectedReply = replying;
     const attempt =
-      retry.current?.text === text && retry.current.file === selected
+      retry.current?.text === text &&
+      retry.current.file === selected &&
+      retry.current.replyToMessageId === selectedReply?.id
         ? retry.current
-        : { id: crypto.randomUUID(), text, file: selected };
+        : {
+            id: crypto.randomUUID(),
+            text,
+            file: selected,
+            replyToMessageId: selectedReply?.id,
+          };
     retry.current = attempt;
     sendingRef.current = true;
     setSending(true);
@@ -445,11 +567,18 @@ export function Conversation({
     // Keep the actual editable input focused; toggling readOnly can dismiss a mobile IME.
     setInput("");
     try {
-      const m = await sendMessage(cid, text, selected, attempt.id);
+      const m = await sendMessage(
+        cid,
+        text,
+        selected,
+        attempt.id,
+        attempt.replyToMessageId,
+      );
       if (!alive.current) return;
       pendingPosition.current = { bottom: true };
       setMessages((current) => mergeMessages(current, [m]));
       setFile(undefined);
+      setReplying(undefined);
       retry.current = undefined;
       window.dispatchEvent(new Event("apchi:chats-updated"));
     } catch (e) {
@@ -465,10 +594,11 @@ export function Conversation({
   const online = Boolean(
     chat.last_seen_at && Date.now() - Date.parse(chat.last_seen_at) < 70000,
   );
+  const visibleMessages = messages.filter((message) => !message.deleted_at);
   return (
     <section
       className="conversation-panel panel"
-      data-dialog-theme={chat.dialog_theme}
+      data-dialog-theme={dialogTheme}
     >
       <header className="conversation-header">
         <button
@@ -478,11 +608,19 @@ export function Conversation({
         >
           <ArrowLeft size={20} />
         </button>
-        <Avatar
-          initials={initialFromUsername(chat.username)}
-          src={chat.avatar_url}
-          color={chat.avatar_color}
-        />
+        <button
+          type="button"
+          className="conversation-avatar-button"
+          disabled={!chat.avatar_url}
+          aria-label="Открыть аватар собеседника"
+          onClick={() => setAvatarOpen(true)}
+        >
+          <Avatar
+            initials={initialFromUsername(chat.username)}
+            src={chat.avatar_url}
+            color={chat.avatar_color}
+          />
+        </button>
         <button
           className="conversation-title title-button"
           aria-label={"Открыть профиль: " + chat.display_name}
@@ -560,62 +698,33 @@ export function Conversation({
                 {olderBusy ? "Загрузка…" : "Предыдущие сообщения"}
               </button>
             )}
-            {!messages.length && (
+            {!visibleMessages.length && (
               <div className="empty-block">
                 <strong>Начните разговор</strong>
               </div>
             )}
-            {messages.map((m) => (
-              <article
+            {visibleMessages.map((m) => (
+              <MessageItem
                 key={m.id}
-                data-message={m.id}
-                className={
-                  "message " + (m.sender_id === user!.id ? "mine" : "theirs")
+                message={m}
+                currentUserId={user!.id}
+                otherDisplayName={chat.display_name}
+                read={Boolean(peerReadAt && m.created_at <= peerReadAt)}
+                highlighted={highlighted === m.id}
+                onReply={() => {
+                  setReplying(m);
+                  editor.current?.focus();
+                }}
+                onActions={() => setMessageActions(m)}
+                onJumpToReply={() =>
+                  m.reply_to_message_id &&
+                  void jumpToMessage(m.reply_to_message_id)
                 }
-              >
-                <div className="message-bubble">
-                  {m.deleted_at ? (
-                    <span className="deleted-message">Сообщение удалено</span>
-                  ) : (
-                    <>
-                      {m.body && <div className="message-body">{m.body}</div>}
-                      {m.attachment_path && (
-                        <Attachment
-                          message={m}
-                          onLoad={() => {
-                            if (near.current) bottom();
-                            markVisible();
-                          }}
-                        />
-                      )}
-                    </>
-                  )}
-                  <div className="message-meta">
-                    <time>
-                      {new Date(m.created_at).toLocaleTimeString("ru-RU", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </time>
-                    {m.sender_id === user!.id && !m.deleted_at && (
-                      <button
-                        aria-label="Удалить сообщение"
-                        onClick={() => setDeleting(m)}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    )}
-                    {m.sender_id !== user!.id && !m.deleted_at && (
-                      <button
-                        aria-label="Пожаловаться на сообщение"
-                        onClick={() => setReporting(m)}
-                      >
-                        <Flag size={13} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </article>
+                onAttachmentLoad={() => {
+                  if (near.current) bottom();
+                  markVisible();
+                }}
+              />
             ))}
           </>
         )}
@@ -636,6 +745,27 @@ export function Conversation({
           </div>
         ) : (
           <>
+            {replying && (
+              <div className="selected-reply">
+                <div>
+                  <strong>
+                    Ответ:{" "}
+                    {replying.sender_id === user!.id ? "вы" : chat.display_name}
+                  </strong>
+                  <span>
+                    {replying.body || replying.attachment_name || "Вложение"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Отменить ответ"
+                  disabled={sending}
+                  onClick={() => setReplying(undefined)}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            )}
             {file && (
               <div className="selected-file">
                 <span>{file.name}</span>
@@ -727,6 +857,7 @@ export function Conversation({
                   onClick={async () => {
                     try {
                       await setDialogTheme(cid, id);
+                      setDialogThemeState(id);
                       setPanel(null);
                     } catch (e) {
                       setError(errorText(e));
@@ -735,7 +866,7 @@ export function Conversation({
                 >
                   <i className={"theme-dot theme-" + id} />
                   {label}
-                  {chat.dialog_theme === id ? " ✓" : ""}
+                  {dialogTheme === id ? " ✓" : ""}
                 </button>
               ))}
               <DialogBackground
@@ -804,14 +935,70 @@ export function Conversation({
           )}
         </Modal>
       )}
+      {messageActions && (
+        <Modal
+          title="Действия с сообщением"
+          className="message-action-sheet"
+          onClose={() => setMessageActions(undefined)}
+        >
+          <div className="action-list">
+            <button
+              onClick={() => {
+                setReplying(messageActions);
+                setMessageActions(undefined);
+                editor.current?.focus();
+              }}
+            >
+              Ответить
+            </button>
+            <button
+              className="danger"
+              onClick={() => {
+                setDeleting({ message: messageActions, mode: "me" });
+                setMessageActions(undefined);
+              }}
+            >
+              Удалить у меня
+            </button>
+            {messageActions.sender_id === user!.id ? (
+              <button
+                className="danger"
+                onClick={() => {
+                  setDeleting({ message: messageActions, mode: "everyone" });
+                  setMessageActions(undefined);
+                }}
+              >
+                Удалить у всех
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setReporting(messageActions);
+                  setMessageActions(undefined);
+                }}
+              >
+                Пожаловаться
+              </button>
+            )}
+          </div>
+        </Modal>
+      )}
       {deleting && (
         <Modal
-          title="Удалить сообщение у всех?"
+          title={
+            deleting.mode === "everyone"
+              ? "Удалить сообщение у всех?"
+              : "Удалить сообщение у вас?"
+          }
           busy={deleteBusy}
           onClose={() => setDeleting(undefined)}
         >
           <ErrorNotice error={error} />
-          <p>Сообщение и вложение станут недоступны участникам диалога.</p>
+          <p>
+            {deleting.mode === "everyone"
+              ? "Сообщение и вложение исчезнут у обоих участников диалога."
+              : "Сообщение исчезнет только из вашей истории."}
+          </p>
           <div className="modal-actions">
             <button
               className="secondary-button"
@@ -826,19 +1013,16 @@ export function Conversation({
               onClick={async () => {
                 setDeleteBusy(true);
                 try {
-                  await deleteMessage(deleting);
+                  if (deleting.mode === "everyone")
+                    await deleteMessageForEveryone(deleting.message);
+                  else await deleteMessageForMe(deleting.message);
                   setMessages((current) =>
-                    current.map((m) =>
-                      m.id === deleting.id
-                        ? {
-                            ...m,
-                            deleted_at: new Date().toISOString(),
-                            body: "",
-                          }
-                        : m,
-                    ),
+                    current.filter((m) => m.id !== deleting.message.id),
                   );
+                  if (replying?.id === deleting.message.id)
+                    setReplying(undefined);
                   setDeleting(undefined);
+                  window.dispatchEvent(new Event("apchi:chats-updated"));
                 } catch (e) {
                   setError(errorText(e));
                 } finally {
@@ -856,6 +1040,13 @@ export function Conversation({
           reportedUser={reporting.sender_id}
           messageId={reporting.id}
           onClose={() => setReporting(undefined)}
+        />
+      )}
+      {avatarOpen && chat.avatar_url && (
+        <AvatarViewer
+          title={`Аватар: ${chat.display_name}`}
+          canonicalUrl={chat.avatar_url}
+          onClose={() => setAvatarOpen(false)}
         />
       )}
     </section>
